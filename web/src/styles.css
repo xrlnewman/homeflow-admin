@@ -47,6 +47,8 @@ h1 { color: #182337; font-size: 28px; letter-spacing: -.8px; }
 h1 span { color: #dfaf62; font-size: 18px; vertical-align: 4px; }
 .heading-copy { margin-top: 10px; color: #8491a2; font-size: 12px; }
 .heading-copy strong { color: #4d6276; font-weight: 600; }
+.data-source-badge { display: inline-flex; margin-left: 8px; padding: 3px 7px; border: 1px solid #dce5e7; border-radius: 999px; color: #71818d; background: #f7faf9; font-size: 10px; font-weight: 700; vertical-align: 1px; }
+.data-source-api { border-color: #b7e4ca; color: #167746; background: #ecfbf1; }
 .primary-button { display: flex; align-items: center; gap: 8px; padding: 12px 17px; color: #102232; font-size: 12px; font-weight: 700; border-radius: 9px; background: #a6e5bd; box-shadow: 0 7px 16px rgba(75,160,104,.16); transition: .2s ease; }
 .primary-button:hover { transform: translateY(-1px); background: #b8efc9; }
 .primary-button span { font-size: 17px; font-weight: 400; }

@@ -1,6 +1,7 @@
 <script setup>
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { getOrderStateLabel } from './domain/order-state.js';
+import { createApiClient, demoSnapshot } from './api/client.js';
 
 const navItems = [
   { label: '运营总览', icon: '⌂', key: 'overview' },
@@ -18,6 +19,13 @@ const orders = ref([
   { id: 'HF-20260715-091', customer: '苏先生', service: '全屋整理收纳', address: '番禺区 · 万博', time: '昨天 16:00—18:00', state: 'completed', amount: '¥ 520', avatar: '苏', tech: '李师傅' },
 ]);
 
+const dashboardSummary = ref({ ...demoSnapshot.dashboard });
+const recommendations = ref([...demoSnapshot.recommendations]);
+const dataSource = ref('demo');
+const apiClient = createApiClient({
+  token: typeof window !== 'undefined' ? window.localStorage.getItem('homeflow_access_token') || '' : '',
+});
+
 const activeNav = ref('overview');
 const range = ref('近 7 天');
 const showDispatch = ref(false);
@@ -26,6 +34,47 @@ const toast = ref('');
 
 const pageTitle = computed(() => navItems.find((item) => item.key === activeNav.value)?.label ?? '运营总览');
 const pendingOrders = computed(() => orders.value.filter((order) => order.state === 'pending_dispatch').length);
+const completedOrders = computed(() => dashboardSummary.value.completed ?? 36);
+const completionRate = computed(() => `${((dashboardSummary.value.completionRate ?? 0.947) * 100).toFixed(1)}%`);
+const todayRevenue = computed(() => Number(dashboardSummary.value.revenue ?? 8642).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const dataSourceLabel = computed(() => dataSource.value === 'api' ? '实时接口' : '演示数据');
+
+function normalizeRemoteOrders(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((raw, index) => {
+    const customer = raw.customerName || raw.customer || `客户 ${String(raw.userId || index + 1).slice(-4)}`;
+    const service = raw.serviceName || raw.service || `服务项目 · ${raw.serviceId || '待确认'}`;
+    const address = raw.address || raw.addressDetail || `待补充地址 · ${raw.addressId || '—'}`;
+    const date = raw.date ? `${raw.date}${raw.slotId ? ` · ${raw.slotId}` : ''}` : '时间待确认';
+    return {
+      id: raw.id || `HF-REMOTE-${index + 1}`,
+      customer,
+      service,
+      address,
+      time: raw.time || date,
+      state: raw.state || 'pending_confirmation',
+      amount: raw.amount || '待计价',
+      avatar: customer.slice(0, 1),
+      tech: raw.technicianName || raw.technician || raw.technicianId || '',
+    };
+  });
+}
+
+async function loadLiveData() {
+  const snapshot = await apiClient.snapshot();
+  dataSource.value = snapshot.source;
+  if (snapshot.source !== 'api') return;
+  dashboardSummary.value = { ...dashboardSummary.value, ...snapshot.data.dashboard };
+  const liveOrders = normalizeRemoteOrders(snapshot.data.orders);
+  if (liveOrders.length) orders.value = liveOrders;
+  if (snapshot.data.recommendations.length) recommendations.value = snapshot.data.recommendations;
+}
+
+onMounted(() => {
+  loadLiveData().catch(() => {
+    dataSource.value = 'demo';
+  });
+});
 
 function openDispatch(order) {
   selectedOrder.value = order;
@@ -100,14 +149,14 @@ function setNav(key) {
         <div>
           <p class="eyebrow">THURSDAY, JUL 16 · 广州</p>
           <h1>早上好，许汝林 <span>✦</span></h1>
-          <p class="heading-copy">今天有 <strong>{{ pendingOrders }} 笔订单</strong> 等待派单，服务团队状态良好。</p>
+          <p class="heading-copy">今天有 <strong>{{ pendingOrders }} 笔订单</strong> 等待派单，服务团队状态良好。<span class="data-source-badge" :class="`data-source-${dataSource}`">{{ dataSourceLabel }}</span></p>
         </div>
         <button class="primary-button" type="button" @click="setNav('orders')"><span>＋</span> 新建服务订单</button>
       </section>
 
       <section class="metric-grid" aria-label="经营数据">
-        <article class="metric-card metric-card--green"><div class="metric-top"><span class="metric-label">今日成交额</span><span class="metric-trend">↗ 12.8%</span></div><strong>¥ 8,642<span>.00</span></strong><div class="metric-foot"><span>对比昨日</span><div class="mini-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></article>
-        <article class="metric-card"><div class="metric-top"><span class="metric-label">完成订单</span><span class="metric-trend metric-trend--blue">↗ 8.4%</span></div><strong>36<span> 笔</span></strong><div class="metric-foot"><span>完成率 94.7%</span><div class="ring-progress"><i></i></div></div></article>
+        <article class="metric-card metric-card--green"><div class="metric-top"><span class="metric-label">今日成交额</span><span class="metric-trend">↗ 12.8%</span></div><strong>¥ {{ todayRevenue.split('.')[0] }}<span>.{{ todayRevenue.split('.')[1] }}</span></strong><div class="metric-foot"><span>对比昨日</span><div class="mini-sparkline"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></article>
+        <article class="metric-card"><div class="metric-top"><span class="metric-label">完成订单</span><span class="metric-trend metric-trend--blue">↗ 8.4%</span></div><strong>{{ completedOrders }}<span> 笔</span></strong><div class="metric-foot"><span>完成率 {{ completionRate }}</span><div class="ring-progress"><i></i></div></div></article>
         <article class="metric-card"><div class="metric-top"><span class="metric-label">新增客户</span><span class="metric-trend metric-trend--purple">↗ 16.2%</span></div><strong>24<span> 位</span></strong><div class="metric-foot"><span>本周累计 108 位</span><div class="avatar-stack"><i>林</i><i>周</i><i>何</i><i>＋</i></div></div></article>
         <article class="metric-card metric-card--dark"><div class="metric-top"><span class="metric-label">平均评分</span><span class="metric-star">★</span></div><strong>4.92<span>/5</span></strong><div class="metric-foot"><span>近 30 天 · 218 条评价</span><span class="rating-word">优秀</span></div></article>
       </section>
@@ -136,10 +185,10 @@ function setNav(key) {
         <article class="panel quality-panel"><div class="panel-heading"><div><h2>服务质量</h2><p>本月客户反馈概览</p></div><span class="quality-score">4.92 <small>/ 5</small></span></div><div class="quality-main"><div class="quality-ring"><div><strong>98<span>%</span></strong><small>满意度</small></div></div><div class="quality-breakdown"><div><span>响应速度</span><div class="tiny-track"><i style="width: 96%"></i></div><strong>4.9</strong></div><div><span>服务态度</span><div class="tiny-track"><i style="width: 99%"></i></div><strong>5.0</strong></div><div><span>专业程度</span><div class="tiny-track"><i style="width: 94%"></i></div><strong>4.8</strong></div></div></div><button class="quality-link" type="button" @click="setNav('reviews')">查看全部评价 <span>→</span></button></article>
       </section>
 
-      <footer class="page-footer"><span>HomeFlow 到家云 · 免费开源运营系统</span><span>数据更新时间：刚刚</span></footer>
+      <footer class="page-footer"><span>HomeFlow 到家云 · 免费开源运营系统</span><span>数据来源：{{ dataSourceLabel }} · 更新：刚刚</span></footer>
     </main>
 
-    <div v-if="showDispatch" class="modal-backdrop" @click.self="showDispatch = false"><section class="dispatch-modal" role="dialog" aria-modal="true" aria-labelledby="dispatch-title"><button class="modal-close" type="button" aria-label="关闭" @click="showDispatch = false">×</button><p class="eyebrow">ORDER {{ selectedOrder?.id }}</p><h2 id="dispatch-title">为订单安排服务人员</h2><p class="modal-copy">系统按技能、距离和当前负载为你推荐以下人员。</p><div class="recommend-list"><button v-for="person in [{name:'陈师傅',desc:'保洁认证 · 距离 1.2 km · 当前 1 单',score:'98%'},{name:'王师傅',desc:'保洁认证 · 距离 2.4 km · 当前空闲',score:'94%'},{name:'李师傅',desc:'整理收纳 · 距离 3.1 km · 当前 2 单',score:'86%'}]" :key="person.name" class="recommend-item" type="button" @click="assignTechnician(person.name)"><span class="recommend-avatar">{{ person.name.slice(0, 1) }}</span><span><strong>{{ person.name }}</strong><small>{{ person.desc }}</small></span><b>{{ person.score }}</b><span class="recommend-arrow">→</span></button></div></section></div>
+  <div v-if="showDispatch" class="modal-backdrop" @click.self="showDispatch = false"><section class="dispatch-modal" role="dialog" aria-modal="true" aria-labelledby="dispatch-title"><button class="modal-close" type="button" aria-label="关闭" @click="showDispatch = false">×</button><p class="eyebrow">ORDER {{ selectedOrder?.id }}</p><h2 id="dispatch-title">为订单安排服务人员</h2><p class="modal-copy">系统按技能、距离和当前负载为你推荐以下人员。</p><div class="recommend-list"><button v-for="person in recommendations" :key="person.id || person.name" class="recommend-item" type="button" @click="assignTechnician(person.name)"><span class="recommend-avatar">{{ person.name.slice(0, 1) }}</span><span><strong>{{ person.name }}</strong><small>{{ person.desc || person.description || '技能匹配 · 当前可接单' }}</small></span><b>{{ person.score || '—' }}</b><span class="recommend-arrow">→</span></button></div></section></div>
     <div v-if="toast" class="toast">✓ {{ toast }}</div>
   </div>
 </template>
