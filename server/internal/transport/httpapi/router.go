@@ -50,7 +50,7 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	s := &Server{cfg: cfg, store: st, orders: orderapp.NewService(st, locker), deps: deps}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Recovery(), traceMiddleware())
+	r.Use(gin.Recovery(), traceMiddleware(), corsMiddleware(cfg.CORSOrigins))
 	r.GET("/healthz", s.health)
 	api := r.Group("/api/v1")
 	api.POST("/auth/login", s.login)
@@ -88,6 +88,36 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	workbench.POST("/orders/:id/proofs", s.proofs)
 	workbench.POST("/orders/:id/complete", s.complete)
 	return r
+}
+
+func corsMiddleware(rawOrigins string) gin.HandlerFunc {
+	allowed := make(map[string]struct{})
+	for _, origin := range strings.Split(rawOrigins, ",") {
+		if value := strings.TrimSpace(origin); value != "" {
+			allowed[value] = struct{}{}
+		}
+	}
+	return func(c *gin.Context) {
+		origin := strings.TrimSpace(c.GetHeader("Origin"))
+		if origin == "" {
+			c.Next()
+			return
+		}
+		if _, ok := allowed[origin]; !ok {
+			c.Next()
+			return
+		}
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Authorization,Content-Type,Idempotency-Key,X-Trace-Id")
+		c.Header("Access-Control-Expose-Headers", "X-Trace-Id")
+		c.Header("Vary", "Origin")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	}
 }
 
 func seed(st *store.MemoryStore) {

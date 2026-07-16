@@ -2,6 +2,8 @@
 
 Base URL: `/api/v1`
 
+本地前端联调默认允许 `http://localhost:4310`（运营后台）和 `http://localhost:4330`（小程序 H5），生产环境通过 `CORS_ORIGINS` 覆盖为实际域名。
+
 ## Response envelope
 
 ```json

@@ -8,10 +8,11 @@ type Config struct {
 	DatabaseDSN string
 	RedisAddr   string
 	RedisDB     int
+	CORSOrigins string
 }
 
 func Load() Config {
-	c := Config{Addr: ":8080", JWTSecret: "homeflow-development-secret", DatabaseDSN: "root:homeflow@tcp(mysql:3306)/homeflow?charset=utf8mb4&parseTime=True&loc=Local", RedisAddr: "redis:6379"}
+	c := Config{Addr: ":8080", JWTSecret: "homeflow-development-secret", DatabaseDSN: "root:homeflow@tcp(mysql:3306)/homeflow?charset=utf8mb4&parseTime=True&loc=Local", RedisAddr: "redis:6379", CORSOrigins: "http://localhost:4310,http://127.0.0.1:4310,http://localhost:4330,http://127.0.0.1:4330"}
 	if value := os.Getenv("APP_ADDR"); value != "" {
 		c.Addr = value
 	}
@@ -23,6 +24,9 @@ func Load() Config {
 	}
 	if value := os.Getenv("REDIS_ADDR"); value != "" {
 		c.RedisAddr = value
+	}
+	if value := os.Getenv("CORS_ORIGINS"); value != "" {
+		c.CORSOrigins = value
 	}
 	return c
 }

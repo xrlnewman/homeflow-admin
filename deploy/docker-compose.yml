@@ -8,6 +8,7 @@ services:
       MYSQL_DSN: homeflow:homeflow@tcp(mysql:3306)/homeflow?charset=utf8mb4&parseTime=True&loc=Local
       REDIS_ADDR: redis:6379
       JWT_SECRET: ${JWT_SECRET:-local-only-change-me}
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:4310,http://127.0.0.1:4310,http://localhost:4330,http://127.0.0.1:4330}"
     ports:
       - "8080:8080"
     depends_on:
