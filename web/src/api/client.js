@@ -23,6 +23,11 @@ function envApiBaseUrl() {
     : DEFAULT_API_BASE_URL;
 }
 
+export function resolveAuthState({ baseUrl = '', token = '' } = {}) {
+  if (String(token).trim()) return 'authenticated';
+  return String(baseUrl).trim() ? 'login' : 'offline-ready';
+}
+
 function joinUrl(baseUrl, path) {
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 }
@@ -95,9 +100,30 @@ export function createApiClient({
       method: 'POST',
       body: JSON.stringify(credentials),
     });
+    if (!data?.accessToken) {
+      throw new Error('登录响应缺少访问令牌');
+    }
     token = data.accessToken;
     storage?.setItem?.('homeflow_access_token', token);
     return { source: 'api', data };
+  }
+
+  async function logout() {
+    let remoteError = '';
+    const shouldNotifyServer = Boolean(baseUrl && token);
+    if (shouldNotifyServer) {
+      try {
+        await request('/auth/logout', { method: 'POST' });
+      } catch (error) {
+        remoteError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    token = '';
+    storage?.removeItem?.('homeflow_access_token');
+    return {
+      source: shouldNotifyServer && !remoteError ? 'api' : 'demo',
+      ...(remoteError ? { remoteError } : {}),
+    };
   }
 
   async function dashboardSummary() {
@@ -138,5 +164,14 @@ export function createApiClient({
     };
   }
 
-  return { login, dashboardSummary, adminOrders, technicianRecommendations, snapshot };
+  return {
+    login,
+    logout,
+    dashboardSummary,
+    adminOrders,
+    technicianRecommendations,
+    snapshot,
+    getToken: () => token,
+    isConfigured: () => Boolean(baseUrl),
+  };
 }

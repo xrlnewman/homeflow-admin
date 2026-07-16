@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import { getOrderStateLabel } from './domain/order-state.js';
-import { createApiClient, demoSnapshot } from './api/client.js';
+import { createApiClient, demoSnapshot, resolveAuthState } from './api/client.js';
 
 const navItems = [
   { label: '运营总览', icon: '⌂', key: 'overview' },
@@ -22,9 +22,23 @@ const orders = ref([
 const dashboardSummary = ref({ ...demoSnapshot.dashboard });
 const recommendations = ref([...demoSnapshot.recommendations]);
 const dataSource = ref('demo');
+const storedToken = typeof window !== 'undefined' ? window.localStorage.getItem('homeflow_access_token') || '' : '';
 const apiClient = createApiClient({
-  token: typeof window !== 'undefined' ? window.localStorage.getItem('homeflow_access_token') || '' : '',
+  token: storedToken,
 });
+const authState = ref(resolveAuthState({
+  baseUrl: apiClient.isConfigured() ? 'configured' : '',
+  token: storedToken,
+}));
+const loginForm = ref({ phone: '', password: '' });
+const loginError = ref('');
+const loginLoading = ref(false);
+const isDashboardVisible = computed(() => ['authenticated', 'offline-demo'].includes(authState.value));
+const isOfflineReady = computed(() => authState.value === 'offline-ready');
+const authHeading = computed(() => apiClient.isConfigured() ? '欢迎回到 HomeFlow' : '先看看 HomeFlow 怎么工作');
+const authDescription = computed(() => apiClient.isConfigured()
+  ? '登录运营中心，查看实时订单、派单和服务质量。'
+  : '当前未配置 API 地址，你可以先进入离线演示体验完整看板。');
 
 const activeNav = ref('overview');
 const range = ref('近 7 天');
@@ -71,10 +85,45 @@ async function loadLiveData() {
 }
 
 onMounted(() => {
-  loadLiveData().catch(() => {
-    dataSource.value = 'demo';
-  });
+  if (isDashboardVisible.value) {
+    loadLiveData().catch(() => {
+      dataSource.value = 'demo';
+    });
+  }
 });
+
+async function submitLogin() {
+  loginError.value = '';
+  if (!loginForm.value.phone.trim() || !loginForm.value.password) {
+    loginError.value = '请输入手机号和密码';
+    return;
+  }
+  loginLoading.value = true;
+  try {
+    await apiClient.login(loginForm.value);
+    authState.value = 'authenticated';
+    await loadLiveData();
+  } catch (error) {
+    loginError.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
+  } finally {
+    loginLoading.value = false;
+  }
+}
+
+function enterOfflineDemo() {
+  loginError.value = '';
+  dataSource.value = 'demo';
+  authState.value = 'offline-demo';
+}
+
+async function handleLogout() {
+  await apiClient.logout();
+  authState.value = apiClient.isConfigured() ? 'login' : 'offline-ready';
+  dataSource.value = 'demo';
+  dashboardSummary.value = { ...demoSnapshot.dashboard };
+  orders.value = [...demoSnapshot.orders];
+  recommendations.value = [...demoSnapshot.recommendations];
+}
 
 function openDispatch(order) {
   selectedOrder.value = order;
@@ -101,7 +150,30 @@ function setNav(key) {
 </script>
 
 <template>
-  <div class="app-shell">
+  <section v-if="!isDashboardVisible" class="auth-shell">
+    <div class="auth-glow auth-glow--one"></div>
+    <div class="auth-glow auth-glow--two"></div>
+    <div class="auth-card">
+      <div class="auth-brand"><span class="auth-brand-mark">H</span><span><strong>HomeFlow</strong><small>到家云运营中心</small></span></div>
+      <p class="auth-eyebrow">HOMEFLOW ADMIN · 运营工作台</p>
+      <h1>{{ authHeading }}</h1>
+      <p class="auth-description">{{ authDescription }}</p>
+      <form v-if="!isOfflineReady" class="auth-form" @submit.prevent="submitLogin">
+        <label>手机号<input v-model="loginForm.phone" name="phone" type="tel" inputmode="numeric" autocomplete="username" placeholder="请输入运营账号手机号"></label>
+        <label>密码<input v-model="loginForm.password" name="password" type="password" autocomplete="current-password" placeholder="请输入登录密码"></label>
+        <p v-if="loginError" class="auth-error" role="alert">{{ loginError }}</p>
+        <button class="auth-submit" type="submit" :disabled="loginLoading">{{ loginLoading ? '登录中…' : '进入运营中心' }}<span>→</span></button>
+        <button class="auth-offline-link" type="button" @click="enterOfflineDemo">暂不登录，进入离线演示</button>
+      </form>
+      <div v-else class="offline-panel">
+        <span class="offline-icon">✦</span>
+        <div><strong>离线演示已准备好</strong><p>看板使用本地示例数据，不会向服务器发送请求。</p></div>
+        <button class="auth-submit" type="button" @click="enterOfflineDemo">进入离线演示 <span>→</span></button>
+      </div>
+      <p class="auth-foot"><span class="auth-status-dot"></span>{{ apiClient.isConfigured() ? '已连接 HomeFlow API' : '未配置 API · 可随时接入真实服务' }}</p>
+    </div>
+  </section>
+  <div v-else class="app-shell">
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-mark">H</div>
@@ -131,7 +203,7 @@ function setNav(key) {
       <div class="sidebar-footer">
         <div class="mini-avatar">许</div>
         <div><strong>许汝林</strong><span>超级管理员</span></div>
-        <button type="button" aria-label="打开个人菜单">•••</button>
+        <button type="button" aria-label="退出登录" title="退出登录" @click="handleLogout">↪</button>
       </div>
     </aside>
 
