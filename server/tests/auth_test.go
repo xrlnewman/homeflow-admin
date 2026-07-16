@@ -3,9 +3,11 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/xrlnewman/homeflow-admin/server/internal/config"
 	"github.com/xrlnewman/homeflow-admin/server/internal/domain"
@@ -104,5 +106,40 @@ func TestTechnicianCannotOperateAnotherTechniciansOrder(t *testing.T) {
 	r.ServeHTTP(res, req)
 	if res.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", res.Code)
+	}
+}
+
+func TestCustomerCanCreateDemoOrderWithIdempotencyKey(t *testing.T) {
+	r := httpapi.NewRouter(config.Config{JWTSecret: "test-secret"}, store.NewMemoryStore())
+	body, _ := json.Marshal(map[string]string{"phone": "13800000000", "password": "demo123456"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes := httptest.NewRecorder()
+	r.ServeHTTP(loginRes, loginReq)
+	var loginEnvelope struct {
+		Data struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(loginRes.Body.Bytes(), &loginEnvelope)
+	date := time.Now().UTC().Add(24 * time.Hour).Format("2006-01-02")
+	orderBody := []byte(fmt.Sprintf(`{"serviceId":"svc-clean","addressId":"addr-demo","date":"%s","slotId":"slot-demo-am","remark":"请提前联系"}`, date))
+	orderReq := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(orderBody))
+	orderReq.Header.Set("Content-Type", "application/json")
+	orderReq.Header.Set("Authorization", "Bearer "+loginEnvelope.Data.AccessToken)
+	orderReq.Header.Set("Idempotency-Key", "order-idempotency-demo")
+	orderRes := httptest.NewRecorder()
+	r.ServeHTTP(orderRes, orderReq)
+	if orderRes.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", orderRes.Code, orderRes.Body.String())
+	}
+	retryReq := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(orderBody))
+	retryReq.Header.Set("Content-Type", "application/json")
+	retryReq.Header.Set("Authorization", "Bearer "+loginEnvelope.Data.AccessToken)
+	retryReq.Header.Set("Idempotency-Key", "order-idempotency-demo")
+	retryRes := httptest.NewRecorder()
+	r.ServeHTTP(retryRes, retryReq)
+	if retryRes.Code != http.StatusCreated {
+		t.Fatalf("expected idempotent retry 201, got %d", retryRes.Code)
 	}
 }

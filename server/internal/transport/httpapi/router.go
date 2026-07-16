@@ -42,7 +42,11 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 		st = store.NewMemoryStore()
 	}
 	seed(st)
-	s := &Server{cfg: cfg, store: st, orders: orderapp.NewService(st, deps.Redis), deps: deps}
+	var locker orderapp.Locker
+	if deps.Redis != nil {
+		locker = deps.Redis
+	}
+	s := &Server{cfg: cfg, store: st, orders: orderapp.NewService(st, locker), deps: deps}
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery(), traceMiddleware())
@@ -78,6 +82,10 @@ func seed(st *store.MemoryStore) {
 	st.SeedUser(store.User{ID: "admin-demo", Phone: "13900000000", PasswordHash: string(hash), Name: "运营管理员", Role: "admin"})
 	st.SeedUser(store.User{ID: "tech-demo", Phone: "13700000000", PasswordHash: string(hash), Name: "演示师傅", Role: "technician"})
 	st.SeedTechnician(store.Technician{ID: "tech-demo", Name: "演示师傅", Skills: []string{"cleaning"}, Areas: []string{"north"}, ShiftAvailable: true, Role: "technician"})
+	date := time.Now().UTC().Add(24 * time.Hour)
+	dateText := date.Format("2006-01-02")
+	st.SeedService(store.Service{ID: "svc-clean", Name: "深度保洁", Skill: "cleaning", Area: "north", SlotCapacity: 10})
+	st.SeedSlot(store.Slot{ID: "slot-demo-am", ServiceID: "svc-clean", Date: dateText, StartsAt: time.Date(date.Year(), date.Month(), date.Day(), 9, 0, 0, 0, time.UTC), Capacity: 10})
 }
 
 func traceMiddleware() gin.HandlerFunc {
