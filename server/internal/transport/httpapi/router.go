@@ -266,6 +266,7 @@ func (s *Server) addAddress(c *gin.Context) {
 	}
 	in.ID, in.UserID = uuid.NewString(), claimsOf(c).UserID
 	s.store.AddAddress(in)
+	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: in.UserID, Action: "create_address", Resource: in.ID, Result: "success", CreatedAt: time.Now().UTC()})
 	s.envelope(c, http.StatusCreated, "ok", in)
 }
 func (s *Server) technicians(c *gin.Context) {
@@ -319,6 +320,7 @@ func (s *Server) createOrder(c *gin.Context) {
 		s.orderError(c, err)
 		return
 	}
+	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: in.UserID, Action: "create_order", Resource: order.ID, Result: "success", CreatedAt: time.Now().UTC()})
 	s.envelope(c, http.StatusCreated, "ok", order)
 }
 func (s *Server) getOrder(c *gin.Context) {
@@ -352,6 +354,7 @@ func (s *Server) transition(c *gin.Context, to domain.OrderState) {
 		s.orderError(c, err)
 		return
 	}
+	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: claimsOf(c).UserID, Action: "transition_order", Resource: order.ID, Result: string(to), CreatedAt: time.Now().UTC()})
 	s.envelope(c, http.StatusOK, "ok", order)
 }
 func (s *Server) assignOrder(c *gin.Context) {
