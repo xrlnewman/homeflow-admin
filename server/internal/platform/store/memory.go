@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"log/slog"
 	"sort"
 	"sync"
 	"time"
@@ -61,6 +62,7 @@ type MemoryStore struct {
 	audits        []AuditLog
 	idempotencies map[string]string
 	techs         map[string]Technician
+	persistence   Persistence
 }
 
 type AuditLog struct {
@@ -72,11 +74,24 @@ type AuditLog struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Persistence mirrors business writes to a durable store when one is configured.
+type Persistence interface {
+	PersistOrder(domain.Order, string) error
+	PersistOrderEvent(domain.OrderEvent) error
+	PersistAudit(AuditLog) error
+}
+
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		users: map[string]User{}, usersByPhone: map[string]string{}, services: map[string]Service{},
 		slots: map[string]Slot{}, orders: map[string]domain.Order{}, idempotencies: map[string]string{}, techs: map[string]Technician{},
 	}
+}
+
+func (s *MemoryStore) SetPersistence(p Persistence) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.persistence = p
 }
 
 func (s *MemoryStore) SeedUser(user User) {
@@ -167,12 +182,22 @@ func (s *MemoryStore) IdempotentOrder(key, fingerprint string) (domain.Order, er
 
 func (s *MemoryStore) SaveOrder(order domain.Order, idempotencyKey string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.orders[order.ID] = order
 	if idempotencyKey != "" {
 		s.idempotencies[idempotencyKey] = order.ID
 	}
-	s.events = append(s.events, domain.OrderEvent{ID: order.ID + "-created", OrderID: order.ID, To: order.State, ActorID: order.UserID, CreatedAt: order.CreatedAt})
+	event := domain.OrderEvent{ID: order.ID + "-created", OrderID: order.ID, To: order.State, ActorID: order.UserID, CreatedAt: order.CreatedAt}
+	s.events = append(s.events, event)
+	persistence := s.persistence
+	s.mu.Unlock()
+	if persistence != nil {
+		if err := persistence.PersistOrder(order, idempotencyKey); err != nil {
+			slog.Error("持久化订单失败", "orderId", order.ID, "error", err)
+		}
+		if err := persistence.PersistOrderEvent(event); err != nil {
+			slog.Error("持久化订单事件失败", "orderId", order.ID, "error", err)
+		}
+	}
 }
 
 func (s *MemoryStore) OrderByID(id string) (domain.Order, error) {
@@ -186,9 +211,18 @@ func (s *MemoryStore) OrderByID(id string) (domain.Order, error) {
 }
 func (s *MemoryStore) UpdateOrder(order domain.Order, event domain.OrderEvent) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.orders[order.ID] = order
 	s.events = append(s.events, event)
+	persistence := s.persistence
+	s.mu.Unlock()
+	if persistence != nil {
+		if err := persistence.PersistOrder(order, ""); err != nil {
+			slog.Error("持久化订单更新失败", "orderId", order.ID, "error", err)
+		}
+		if err := persistence.PersistOrderEvent(event); err != nil {
+			slog.Error("持久化订单事件失败", "orderId", order.ID, "error", err)
+		}
+	}
 }
 func (s *MemoryStore) OrderCount() int { s.mu.RLock(); defer s.mu.RUnlock(); return len(s.orders) }
 func (s *MemoryStore) Events() []domain.OrderEvent {
@@ -214,8 +248,14 @@ func (s *MemoryStore) Technicians() []Technician {
 }
 func (s *MemoryStore) AddAudit(log AuditLog) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.audits = append(s.audits, log)
+	persistence := s.persistence
+	s.mu.Unlock()
+	if persistence != nil {
+		if err := persistence.PersistAudit(log); err != nil {
+			slog.Error("持久化审计日志失败", "auditId", log.ID, "error", err)
+		}
+	}
 }
 func (s *MemoryStore) Audits() []AuditLog {
 	s.mu.RLock()

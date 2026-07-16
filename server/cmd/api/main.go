@@ -24,6 +24,7 @@ func main() {
 		slog.Warn("MySQL 未连接，使用内存演示模式", "error", err)
 	} else {
 		deps.DB = db
+		st.SetPersistence(database.NewSQLPersistence(db))
 		defer db.Close()
 	}
 	deps.Redis = cache.NewRedisLocker(cfg.RedisAddr, cfg.RedisDB)
