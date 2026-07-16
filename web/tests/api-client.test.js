@@ -52,7 +52,9 @@ test('管理员订单和派单推荐接口按统一 envelope 返回业务数据'
   const [orders, recommendations] = await Promise.all([client.adminOrders(), client.technicianRecommendations()]);
 
   assert.deepEqual(orders, { source: 'api', data: { list: [{ id: 'HF-1', state: 'pending_dispatch' }], total: 1 } });
-  assert.deepEqual(recommendations, { source: 'api', data: [{ id: 'tech-1', name: '陈师傅' }] });
+  assert.equal(recommendations.source, 'api');
+  assert.equal(recommendations.data[0].id, 'tech-1');
+  assert.equal(recommendations.data[0].name, '陈师傅');
 });
 
 test('登录成功后保存访问令牌，并供后续接口复用', async () => {
@@ -79,4 +81,20 @@ test('登录成功后保存访问令牌，并供后续接口复用', async () =>
 
   assert.equal(values.get('homeflow_access_token'), 'token-from-login');
   assert.equal(calls[1].options.headers.Authorization, 'Bearer token-from-login');
+});
+
+test('派单推荐缺少姓名时补齐可渲染的师傅信息', async () => {
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    fetchImpl: async () => new Response(JSON.stringify({
+      code: 0,
+      data: [{ id: 'tech-demo', skills: ['cleaning'], areas: ['north'], shiftAvailable: true, load: 1 }],
+    }), { status: 200 }),
+  });
+
+  const result = await client.technicianRecommendations();
+
+  assert.equal(result.source, 'api');
+  assert.equal(result.data[0].name, '师傅 tech-demo');
+  assert.match(result.data[0].desc, /保洁/);
 });

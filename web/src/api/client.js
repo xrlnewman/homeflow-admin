@@ -34,6 +34,23 @@ function readEnvelope(body, response) {
   return body.data;
 }
 
+function displaySkill(skill) {
+  return ({ cleaning: '保洁', repair: '维修', installation: '安装', organizing: '整理' })[skill] || skill || '到家服务';
+}
+
+function normalizeRecommendation(person, index) {
+  const name = person.name || person.technicianName || `师傅 ${person.id || index + 1}`;
+  const skills = Array.isArray(person.skills) ? person.skills.map(displaySkill).join('、') : '技能匹配';
+  const availability = person.shiftAvailable === false ? '暂不可接单' : '当前可接单';
+  return {
+    ...person,
+    id: person.id || `tech-${index + 1}`,
+    name,
+    desc: person.desc || person.description || `${skills}认证 · ${availability} · 当前 ${person.load ?? 0} 单`,
+    score: person.score || '—',
+  };
+}
+
 export function createApiClient({
   baseUrl = envApiBaseUrl(),
   token: initialToken = '',
@@ -95,7 +112,13 @@ export function createApiClient({
   }
 
   async function technicianRecommendations() {
-    return withDemoFallback(() => request('/admin/dispatch/recommendations'), demoSnapshot.recommendations);
+    return withDemoFallback(
+      async () => {
+        const data = await request('/admin/dispatch/recommendations');
+        return (Array.isArray(data) ? data : []).map(normalizeRecommendation);
+      },
+      demoSnapshot.recommendations,
+    );
   }
 
   async function snapshot() {
