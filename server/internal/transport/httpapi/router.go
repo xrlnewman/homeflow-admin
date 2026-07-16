@@ -68,12 +68,14 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	protected.GET("/orders/:id", s.getOrder)
 	protected.POST("/orders/:id/cancel", s.cancelOrder)
 	protected.POST("/orders/:id/confirm", s.confirmOrder)
+	protected.POST("/orders/:id/review", s.review)
 	admin := protected.Group("/admin")
 	admin.Use(requireRoles("admin", "dispatcher"))
 	admin.GET("/orders", s.adminOrders)
 	admin.POST("/orders/:id/assign", s.assignOrder)
 	admin.GET("/dispatch/recommendations", s.recommendations)
 	admin.GET("/audit-logs", s.auditLogs)
+	admin.GET("/reviews", s.reviews)
 	protected.GET("/dashboard/summary", s.dashboard)
 	protected.GET("/technicians", s.technicians)
 	workbench := protected.Group("/workbench")
@@ -81,6 +83,7 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	workbench.POST("/orders/:id/accept", s.accept)
 	workbench.POST("/orders/:id/arrive", s.arrive)
 	workbench.POST("/orders/:id/start", s.start)
+	workbench.POST("/orders/:id/proofs", s.proofs)
 	workbench.POST("/orders/:id/complete", s.complete)
 	return r
 }
@@ -348,6 +351,32 @@ func (s *Server) confirmOrder(c *gin.Context) {
 	}
 	s.transition(c, domain.OrderCompleted)
 }
+func (s *Server) review(c *gin.Context) {
+	if !s.requireCustomerOrder(c) {
+		return
+	}
+	order, err := s.store.OrderByID(c.Param("id"))
+	if err != nil {
+		s.envelope(c, http.StatusNotFound, "订单不存在", nil)
+		return
+	}
+	if order.State != domain.OrderCompleted {
+		s.envelope(c, http.StatusBadRequest, "订单完成后才可以评价", nil)
+		return
+	}
+	var in struct {
+		Rating  int    `json:"rating"`
+		Content string `json:"content"`
+	}
+	if c.ShouldBindJSON(&in) != nil || in.Rating < 1 || in.Rating > 5 || strings.TrimSpace(in.Content) == "" {
+		s.envelope(c, http.StatusBadRequest, "评价参数不合法", nil)
+		return
+	}
+	review := store.Review{ID: uuid.NewString(), OrderID: order.ID, UserID: claimsOf(c).UserID, Rating: in.Rating, Content: in.Content, CreatedAt: time.Now().UTC()}
+	s.store.AddReview(review)
+	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: review.UserID, Action: "create_review", Resource: review.ID, Result: "success", CreatedAt: review.CreatedAt})
+	s.envelope(c, http.StatusCreated, "ok", review)
+}
 func (s *Server) transition(c *gin.Context, to domain.OrderState) {
 	order, err := s.orders.Transition(c.Request.Context(), c.Param("id"), claimsOf(c).UserID, to)
 	if err != nil {
@@ -383,6 +412,10 @@ func (s *Server) recommendations(c *gin.Context) {
 func (s *Server) auditLogs(c *gin.Context) {
 	s.envelope(c, http.StatusOK, "ok", gin.H{"list": s.store.Audits(), "total": len(s.store.Audits()), "page": 1, "pageSize": 20})
 }
+func (s *Server) reviews(c *gin.Context) {
+	values := s.store.Reviews()
+	s.envelope(c, http.StatusOK, "ok", gin.H{"list": values, "total": len(values), "page": 1, "pageSize": len(values)})
+}
 func (s *Server) accept(c *gin.Context) {
 	if !s.requireTechnicianOrder(c) {
 		return
@@ -400,6 +433,31 @@ func (s *Server) start(c *gin.Context) {
 		return
 	}
 	s.transition(c, domain.OrderPendingCustomerConfirmation)
+}
+func (s *Server) proofs(c *gin.Context) {
+	if !s.requireTechnicianOrder(c) {
+		return
+	}
+	form, err := c.MultipartForm()
+	if err != nil {
+		s.envelope(c, http.StatusBadRequest, "请使用 multipart/form-data 上传凭证", nil)
+		return
+	}
+	note := c.PostForm("note")
+	result := make([]store.Proof, 0)
+	for _, kind := range []string{"before", "after"} {
+		for _, header := range form.File[kind] {
+			proof := store.Proof{ID: uuid.NewString(), OrderID: c.Param("id"), Kind: kind, Filename: header.Filename, Note: note, CreatedAt: time.Now().UTC()}
+			s.store.AddProof(proof)
+			result = append(result, proof)
+		}
+	}
+	if len(result) == 0 {
+		s.envelope(c, http.StatusBadRequest, "至少上传一张服务凭证", nil)
+		return
+	}
+	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: claimsOf(c).UserID, Action: "upload_proof", Resource: c.Param("id"), Result: "success", CreatedAt: time.Now().UTC()})
+	s.envelope(c, http.StatusCreated, "ok", result)
 }
 func (s *Server) complete(c *gin.Context) {
 	if !s.requireTechnicianOrder(c) {

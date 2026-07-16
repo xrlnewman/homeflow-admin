@@ -49,6 +49,24 @@ type Address struct {
 	Detail      string `json:"detail"`
 }
 
+type Review struct {
+	ID        string    `json:"id"`
+	OrderID   string    `json:"orderId"`
+	UserID    string    `json:"userId"`
+	Rating    int       `json:"rating"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type Proof struct {
+	ID        string    `json:"id"`
+	OrderID   string    `json:"orderId"`
+	Kind      string    `json:"kind"`
+	Filename  string    `json:"filename"`
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Technician struct {
 	ID             string
 	Name           string
@@ -71,6 +89,8 @@ type MemoryStore struct {
 	idempotencies map[string]string
 	techs         map[string]Technician
 	addresses     map[string][]Address
+	reviews       []Review
+	proofs        map[string][]Proof
 	persistence   Persistence
 }
 
@@ -95,6 +115,7 @@ func NewMemoryStore() *MemoryStore {
 		users: map[string]User{}, usersByPhone: map[string]string{}, services: map[string]Service{},
 		slots: map[string]Slot{}, orders: map[string]domain.Order{}, idempotencies: map[string]string{}, techs: map[string]Technician{},
 		addresses: map[string][]Address{},
+		proofs:    map[string][]Proof{},
 	}
 }
 
@@ -314,4 +335,25 @@ func (s *MemoryStore) Addresses(userID string) []Address {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]Address(nil), s.addresses[userID]...)
+}
+
+func (s *MemoryStore) AddReview(review Review) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reviews = append(s.reviews, review)
+}
+func (s *MemoryStore) Reviews() []Review {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]Review(nil), s.reviews...)
+}
+func (s *MemoryStore) AddProof(proof Proof) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proofs[proof.OrderID] = append(s.proofs[proof.OrderID], proof)
+}
+func (s *MemoryStore) Proofs(orderID string) []Proof {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]Proof(nil), s.proofs[orderID]...)
 }

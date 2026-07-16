@@ -97,3 +97,13 @@ CREATE TABLE IF NOT EXISTS reviews (
   content VARCHAR(1000) NOT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS work_proofs (
+  id CHAR(36) PRIMARY KEY,
+  order_id CHAR(36) NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  filename VARCHAR(255) NOT NULL,
+  note VARCHAR(500) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_work_proofs_order_id (order_id)
+);
