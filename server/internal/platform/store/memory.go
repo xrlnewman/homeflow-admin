@@ -110,6 +110,9 @@ type Persistence interface {
 	PersistAudit(AuditLog) error
 }
 
+type ReviewPersistence interface{ PersistReview(Review) error }
+type ProofPersistence interface{ PersistProof(Proof) error }
+
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		users: map[string]User{}, usersByPhone: map[string]string{}, services: map[string]Service{},
@@ -339,8 +342,14 @@ func (s *MemoryStore) Addresses(userID string) []Address {
 
 func (s *MemoryStore) AddReview(review Review) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.reviews = append(s.reviews, review)
+	persistence := s.persistence
+	s.mu.Unlock()
+	if saver, ok := persistence.(ReviewPersistence); ok {
+		if err := saver.PersistReview(review); err != nil {
+			slog.Error("持久化评价失败", "reviewId", review.ID, "error", err)
+		}
+	}
 }
 func (s *MemoryStore) Reviews() []Review {
 	s.mu.RLock()
@@ -349,8 +358,14 @@ func (s *MemoryStore) Reviews() []Review {
 }
 func (s *MemoryStore) AddProof(proof Proof) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.proofs[proof.OrderID] = append(s.proofs[proof.OrderID], proof)
+	persistence := s.persistence
+	s.mu.Unlock()
+	if saver, ok := persistence.(ProofPersistence); ok {
+		if err := saver.PersistProof(proof); err != nil {
+			slog.Error("持久化履约凭证失败", "proofId", proof.ID, "error", err)
+		}
+	}
 }
 func (s *MemoryStore) Proofs(orderID string) []Proof {
 	s.mu.RLock()

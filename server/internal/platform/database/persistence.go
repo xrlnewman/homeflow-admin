@@ -40,6 +40,22 @@ func (p *SQLPersistence) PersistAudit(log store.AuditLog) error {
 	return err
 }
 
+func (p *SQLPersistence) PersistReview(review store.Review) error {
+	if p == nil || p.db == nil {
+		return fmt.Errorf("mysql persistence is not configured")
+	}
+	_, err := p.db.Exec(`INSERT INTO reviews (id,order_id,user_id,rating,content,created_at) VALUES (?,?,?,?,?,?)`, review.ID, review.OrderID, review.UserID, review.Rating, review.Content, review.CreatedAt)
+	return err
+}
+
+func (p *SQLPersistence) PersistProof(proof store.Proof) error {
+	if p == nil || p.db == nil {
+		return fmt.Errorf("mysql persistence is not configured")
+	}
+	_, err := p.db.Exec(`INSERT INTO work_proofs (id,order_id,kind,filename,note,created_at) VALUES (?,?,?,?,?,?)`, proof.ID, proof.OrderID, proof.Kind, proof.Filename, nullable(proof.Note), proof.CreatedAt)
+	return err
+}
+
 func nullable(value string) any {
 	if value == "" {
 		return nil
