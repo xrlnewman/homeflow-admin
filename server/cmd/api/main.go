@@ -27,7 +27,14 @@ func main() {
 		st.SetPersistence(database.NewSQLPersistence(db))
 		defer db.Close()
 	}
-	deps.Redis = cache.NewRedisLocker(cfg.RedisAddr, cfg.RedisDB)
+	redisLocker := cache.NewRedisLocker(cfg.RedisAddr, cfg.RedisDB)
+	redisCtx, redisCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	if err := redisLocker.Ping(redisCtx); err != nil {
+		slog.Warn("Redis 未连接，使用无锁演示模式", "error", err)
+	} else {
+		deps.Redis = redisLocker
+	}
+	redisCancel()
 	server := &http.Server{Addr: cfg.Addr, Handler: httpapi.NewRouterWithDeps(cfg, st, deps), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
