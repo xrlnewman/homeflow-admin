@@ -40,3 +40,25 @@ func TestCreateOrderIsIdempotent(t *testing.T) {
 		t.Fatalf("unexpected initial state %s", first.State)
 	}
 }
+
+func TestTransitionPersistsNewStateAndEvent(t *testing.T) {
+	store := NewMemoryStore()
+	order := domain.Order{ID: "order-state", UserID: "u-1", State: domain.OrderPendingConfirmation}
+	store.SaveOrder(order, "")
+	svc := NewService(store, nil)
+	updated, err := svc.Transition(context.Background(), order.ID, "u-1", domain.OrderPendingDispatch)
+	if err != nil {
+		t.Fatalf("transition: %v", err)
+	}
+	if updated.State != domain.OrderPendingDispatch {
+		t.Fatalf("returned state=%s", updated.State)
+	}
+	saved, err := store.OrderByID(order.ID)
+	if err != nil || saved.State != domain.OrderPendingDispatch {
+		t.Fatalf("saved state=%s err=%v", saved.State, err)
+	}
+	events := store.Events()
+	if len(events) != 2 || events[1].From != domain.OrderPendingConfirmation || events[1].To != domain.OrderPendingDispatch {
+		t.Fatalf("unexpected events: %#v", events)
+	}
+}

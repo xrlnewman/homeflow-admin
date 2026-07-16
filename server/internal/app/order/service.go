@@ -88,8 +88,10 @@ func (s *OrderService) Transition(_ context.Context, orderID, actorID string, to
 	if err := domain.ValidateTransition(current.State, to); err != nil {
 		return domain.Order{}, err
 	}
+	from := current.State
+	current.State = to
 	current.UpdatedAt = time.Now().UTC()
-	s.store.UpdateOrder(current, domain.OrderEvent{ID: uuid.NewString(), OrderID: orderID, From: current.State, To: to, ActorID: actorID, CreatedAt: current.UpdatedAt})
+	s.store.UpdateOrder(current, domain.OrderEvent{ID: uuid.NewString(), OrderID: orderID, From: from, To: to, ActorID: actorID, CreatedAt: current.UpdatedAt})
 	return current, nil
 }
 
@@ -108,8 +110,10 @@ func (s *OrderService) Assign(_ context.Context, orderID, actorID, technicianID 
 	if err = domain.ValidateTransition(current.State, domain.OrderAssigned); err != nil {
 		return domain.Order{}, err
 	}
+	from := current.State
 	current.TechnicianID = technicianID
+	current.State = domain.OrderAssigned
 	current.UpdatedAt = time.Now().UTC()
-	s.store.UpdateOrder(current, domain.OrderEvent{ID: uuid.NewString(), OrderID: orderID, From: domain.OrderPendingDispatch, To: domain.OrderAssigned, ActorID: actorID, CreatedAt: current.UpdatedAt})
+	s.store.UpdateOrder(current, domain.OrderEvent{ID: uuid.NewString(), OrderID: orderID, From: from, To: domain.OrderAssigned, ActorID: actorID, CreatedAt: current.UpdatedAt})
 	return current, nil
 }

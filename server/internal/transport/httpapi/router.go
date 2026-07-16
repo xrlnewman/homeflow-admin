@@ -251,9 +251,17 @@ func (s *Server) getOrder(c *gin.Context) {
 	}
 	s.envelope(c, http.StatusOK, "ok", order)
 }
-func (s *Server) cancelOrder(c *gin.Context) { s.transition(c, domain.OrderCancelled) }
+func (s *Server) cancelOrder(c *gin.Context) {
+	if !s.requireCustomerOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderCancelled)
+}
 func (s *Server) confirmOrder(c *gin.Context) {
-	s.transition(c, domain.OrderPendingCustomerConfirmation)
+	if !s.requireCustomerOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderCompleted)
 }
 func (s *Server) transition(c *gin.Context, to domain.OrderState) {
 	order, err := s.orders.Transition(c.Request.Context(), c.Param("id"), claimsOf(c).UserID, to)
@@ -325,6 +333,23 @@ func (s *Server) requireTechnicianOrder(c *gin.Context) bool {
 	}
 	if order.TechnicianID != claims.UserID {
 		s.envelope(c, http.StatusForbidden, "只能操作分配给自己的订单", nil)
+		return false
+	}
+	return true
+}
+
+func (s *Server) requireCustomerOrder(c *gin.Context) bool {
+	claims := claimsOf(c)
+	if claims.Role != "customer" {
+		return true
+	}
+	order, err := s.store.OrderByID(c.Param("id"))
+	if err != nil {
+		s.envelope(c, http.StatusNotFound, "订单不存在", nil)
+		return false
+	}
+	if order.UserID != claims.UserID {
+		s.envelope(c, http.StatusForbidden, "只能操作自己的订单", nil)
 		return false
 	}
 	return true
