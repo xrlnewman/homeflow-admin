@@ -113,12 +113,47 @@ type Persistence interface {
 type ReviewPersistence interface{ PersistReview(Review) error }
 type ProofPersistence interface{ PersistProof(Proof) error }
 
+// PersistenceSnapshot contains durable records used to rebuild the in-memory read model.
+// The snapshot is applied atomically by Restore and never calls the write persistence hooks.
+type PersistenceSnapshot struct {
+	Orders          []domain.Order
+	IdempotencyKeys map[string]string
+	Events          []domain.OrderEvent
+	Audits          []AuditLog
+	Reviews         []Review
+	Proofs          []Proof
+}
+
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		users: map[string]User{}, usersByPhone: map[string]string{}, services: map[string]Service{},
 		slots: map[string]Slot{}, orders: map[string]domain.Order{}, idempotencies: map[string]string{}, techs: map[string]Technician{},
 		addresses: map[string][]Address{},
 		proofs:    map[string][]Proof{},
+	}
+}
+
+// Restore replaces durable portions of the read model after a successful database load.
+// Callers should only invoke it with a complete snapshot; a failed load must not be applied.
+func (s *MemoryStore) Restore(snapshot PersistenceSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.orders = make(map[string]domain.Order, len(snapshot.Orders))
+	for _, order := range snapshot.Orders {
+		s.orders[order.ID] = order
+	}
+	s.idempotencies = make(map[string]string, len(snapshot.IdempotencyKeys))
+	for key, orderID := range snapshot.IdempotencyKeys {
+		if _, ok := s.orders[orderID]; ok && key != "" {
+			s.idempotencies[key] = orderID
+		}
+	}
+	s.events = append([]domain.OrderEvent(nil), snapshot.Events...)
+	s.audits = append([]AuditLog(nil), snapshot.Audits...)
+	s.reviews = append([]Review(nil), snapshot.Reviews...)
+	s.proofs = make(map[string][]Proof)
+	for _, proof := range snapshot.Proofs {
+		s.proofs[proof.OrderID] = append(s.proofs[proof.OrderID], proof)
 	}
 }
 

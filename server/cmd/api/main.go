@@ -23,9 +23,28 @@ func main() {
 	if db, err := database.Open(cfg.DatabaseDSN); err != nil {
 		slog.Warn("MySQL 未连接，使用内存演示模式", "error", err)
 	} else {
-		deps.DB = db
-		st.SetPersistence(database.NewSQLPersistence(db))
-		defer db.Close()
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pingErr := database.Ping(pingCtx, db)
+		pingCancel()
+		if pingErr != nil {
+			slog.Warn("MySQL 未连接，使用内存演示模式", "error", pingErr)
+			_ = db.Close()
+		} else {
+			persistence := database.NewSQLPersistence(db)
+			loadCtx, loadCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			snapshot, loadErr := persistence.Load(loadCtx)
+			loadCancel()
+			if loadErr != nil {
+				slog.Error("MySQL 持久化数据回载失败，停止启动", "error", loadErr)
+				_ = db.Close()
+				os.Exit(1)
+			}
+			st.Restore(snapshot)
+			st.SetPersistence(persistence)
+			deps.DB = db
+			defer db.Close()
+			slog.Info("MySQL 持久化数据已回载", "orders", len(snapshot.Orders), "events", len(snapshot.Events), "audits", len(snapshot.Audits), "reviews", len(snapshot.Reviews), "proofs", len(snapshot.Proofs))
+		}
 	}
 	redisLocker := cache.NewRedisLocker(cfg.RedisAddr, cfg.RedisDB)
 	redisCtx, redisCancel := context.WithTimeout(context.Background(), 2*time.Second)

@@ -63,4 +63,4 @@ The demo server accepts seeded accounts and returns a bearer token. Production S
 
 Cancellation is allowed from `pending_confirmation`, `pending_dispatch`, and `assigned` with an audit event. Every state-changing request is authenticated, authorized, idempotent where retried, and recorded in `order_events` and `audit_logs`.
 
-预约请求必须带 `Idempotency-Key`。服务端在事务边界内使用唯一业务键保存订单，并以 Redis 8 `SET NX EX` 对时段加短锁。当前演示版以进程内读模型提供接口，并在配置 MySQL 8.4 时把订单、事件、审计、评价和履约凭证写入持久化镜像；启动回载和完整 CRUD 读仓库仍是后续生产化工作。开发环境无法连接数据库时 API 仍可使用内存演示模式，生产部署必须配置 `MYSQL_DSN`、`REDIS_ADDR` 和 `JWT_SECRET`。
+预约请求必须带 `Idempotency-Key`。服务端在事务边界内使用唯一业务键保存订单，并以 Redis 8 `SET NX EX` 对时段加短锁。配置 MySQL 8.4 后，订单、事件、审计、评价和履约凭证会写入持久化镜像，并在 API 启动时先回载到内存读模型；回载查询失败会记录结构化错误并终止启动，避免以不完整数据继续提供写服务。开发环境无法连接数据库时 API 仍可使用内存演示模式，生产部署必须配置 `MYSQL_DSN`、`REDIS_ADDR` 和 `JWT_SECRET`。
