@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/xrlnewman/homeflow-admin/server/internal/config"
+	"github.com/xrlnewman/homeflow-admin/server/internal/domain"
 	"github.com/xrlnewman/homeflow-admin/server/internal/platform/store"
 	"github.com/xrlnewman/homeflow-admin/server/internal/transport/httpapi"
 )
@@ -75,6 +76,30 @@ func TestCustomerCannotAssignOrder(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orders/order-1/assign", bytes.NewBufferString(`{"technicianId":"tech-demo"}`))
 	req.Header.Set("Authorization", "Bearer "+envelope.Data.AccessToken)
 	req.Header.Set("Content-Type", "application/json")
+	res := httptest.NewRecorder()
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", res.Code)
+	}
+}
+
+func TestTechnicianCannotOperateAnotherTechniciansOrder(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.SaveOrder(domain.Order{ID: "order-owned-by-other", TechnicianID: "tech-other", State: domain.OrderAssigned}, "")
+	r := httpapi.NewRouter(config.Config{JWTSecret: "test-secret"}, st)
+	body, _ := json.Marshal(map[string]string{"phone": "13700000000", "password": "demo123456"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes := httptest.NewRecorder()
+	r.ServeHTTP(loginRes, loginReq)
+	var envelope struct {
+		Data struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(loginRes.Body.Bytes(), &envelope)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/workbench/orders/order-owned-by-other/accept", nil)
+	req.Header.Set("Authorization", "Bearer "+envelope.Data.AccessToken)
 	res := httptest.NewRecorder()
 	r.ServeHTTP(res, req)
 	if res.Code != http.StatusForbidden {

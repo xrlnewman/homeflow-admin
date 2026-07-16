@@ -281,10 +281,46 @@ func (s *Server) recommendations(c *gin.Context) {
 func (s *Server) auditLogs(c *gin.Context) {
 	s.envelope(c, http.StatusOK, "ok", gin.H{"list": s.store.Audits(), "total": len(s.store.Audits()), "page": 1, "pageSize": 20})
 }
-func (s *Server) accept(c *gin.Context)   { s.transition(c, domain.OrderEnRoute) }
-func (s *Server) arrive(c *gin.Context)   { s.transition(c, domain.OrderServing) }
-func (s *Server) start(c *gin.Context)    { s.transition(c, domain.OrderPendingCustomerConfirmation) }
-func (s *Server) complete(c *gin.Context) { s.transition(c, domain.OrderCompleted) }
+func (s *Server) accept(c *gin.Context) {
+	if !s.requireTechnicianOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderEnRoute)
+}
+func (s *Server) arrive(c *gin.Context) {
+	if !s.requireTechnicianOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderServing)
+}
+func (s *Server) start(c *gin.Context) {
+	if !s.requireTechnicianOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderPendingCustomerConfirmation)
+}
+func (s *Server) complete(c *gin.Context) {
+	if !s.requireTechnicianOrder(c) {
+		return
+	}
+	s.transition(c, domain.OrderCompleted)
+}
+func (s *Server) requireTechnicianOrder(c *gin.Context) bool {
+	claims := claimsOf(c)
+	if claims.Role != "technician" {
+		return true
+	}
+	order, err := s.store.OrderByID(c.Param("id"))
+	if err != nil {
+		s.envelope(c, http.StatusNotFound, "订单不存在", nil)
+		return false
+	}
+	if order.TechnicianID != claims.UserID {
+		s.envelope(c, http.StatusForbidden, "只能操作分配给自己的订单", nil)
+		return false
+	}
+	return true
+}
 func (s *Server) orderError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, orderapp.ErrSlotUnavailable):
