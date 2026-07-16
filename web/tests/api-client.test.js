@@ -54,3 +54,29 @@ test('管理员订单和派单推荐接口按统一 envelope 返回业务数据'
   assert.deepEqual(orders, { source: 'api', data: { list: [{ id: 'HF-1', state: 'pending_dispatch' }], total: 1 } });
   assert.deepEqual(recommendations, { source: 'api', data: [{ id: 'tech-1', name: '陈师傅' }] });
 });
+
+test('登录成功后保存访问令牌，并供后续接口复用', async () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const calls = [];
+  const client = createApiClient({
+    baseUrl: 'https://api.example.test',
+    storage,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      const body = url.endsWith('/auth/login')
+        ? { code: 0, data: { accessToken: 'token-from-login' } }
+        : { code: 0, data: { orders: 1 } };
+      return new Response(JSON.stringify(body), { status: 200 });
+    },
+  });
+
+  await client.login({ phone: '13900000000', password: 'demo123456' });
+  await client.dashboardSummary();
+
+  assert.equal(values.get('homeflow_access_token'), 'token-from-login');
+  assert.equal(calls[1].options.headers.Authorization, 'Bearer token-from-login');
+});

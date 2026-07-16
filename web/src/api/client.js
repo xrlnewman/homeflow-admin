@@ -37,9 +37,10 @@ function readEnvelope(body, response) {
 export function createApiClient({
   baseUrl = envApiBaseUrl(),
   token: initialToken = '',
+  storage = typeof globalThis.localStorage !== 'undefined' ? globalThis.localStorage : null,
   fetchImpl = globalThis.fetch,
 } = {}) {
-  let token = initialToken;
+  let token = initialToken || storage?.getItem?.('homeflow_access_token') || '';
 
   async function request(path, options = {}) {
     if (!baseUrl) {
@@ -78,6 +79,7 @@ export function createApiClient({
       body: JSON.stringify(credentials),
     });
     token = data.accessToken;
+    storage?.setItem?.('homeflow_access_token', token);
     return { source: 'api', data };
   }
 
@@ -115,4 +117,3 @@ export function createApiClient({
 
   return { login, dashboardSummary, adminOrders, technicianRecommendations, snapshot };
 }
-
