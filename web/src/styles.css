@@ -1,11 +1,11 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
 
-:root { font-family: 'DM Sans', 'Noto Sans SC', sans-serif; color: #192437; background: #f4f7fa; font-synthesis: none; }
+:root { --brand: #183B43; --brand-soft: #E7F0F0; --action: #F08A5D; --action-dark: #C9653E; --success: #3C9B79; --warning: #D49A3A; --danger: #C85C5C; --canvas: #F7F8F5; --line: #E3E9E8; font-family: 'DM Sans', 'Noto Sans SC', sans-serif; color: var(--brand); background: var(--canvas); font-synthesis: none; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 1080px; }
 button, select { font: inherit; }
 button { cursor: pointer; border: 0; }
-.app-shell { display: flex; min-height: 100vh; background: #f4f7fa; }
+.app-shell { display: flex; min-height: 100vh; background: var(--canvas); }
 .sidebar { position: fixed; inset: 0 auto 0 0; width: 246px; display: flex; flex-direction: column; padding: 26px 16px 18px; color: #d5deec; background: #101927; z-index: 2; }
 .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px 28px; color: white; }
 .brand-mark { display: grid; width: 35px; height: 35px; place-items: center; color: #102031; font-size: 20px; font-weight: 700; border-radius: 11px; background: #a6e5bd; box-shadow: 0 0 0 5px rgba(166,229,189,.09); }
@@ -97,3 +97,19 @@ h1 span { color: #dfaf62; font-size: 18px; vertical-align: 4px; }
 .auth-eyebrow { margin-top: 51px; color: #8ed7a8; font-size: 10px; font-weight: 700; letter-spacing: 1.35px; }.auth-card h1 { margin-top: 11px; color: #f6fafb; font-size: 28px; letter-spacing: -.8px; }.auth-description { margin-top: 10px; color: #97a8ba; font-size: 12px; line-height: 1.7; }
 .auth-form { display: grid; gap: 16px; margin-top: 27px; }.auth-form label { display: grid; gap: 7px; color: #afbdca; font-size: 11px; }.auth-form input { width: 100%; padding: 12px 13px; color: #edf7f1; border: 1px solid #2b3d52; border-radius: 9px; outline: none; background: #17283a; transition: .2s ease; }.auth-form input::placeholder { color: #687b90; }.auth-form input:focus { border-color: #7bc999; box-shadow: 0 0 0 3px rgba(123,201,153,.12); }.auth-submit { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 3px; padding: 12px 15px; color: #112433; font-size: 12px; font-weight: 700; border-radius: 9px; background: #a6e5bd; box-shadow: 0 10px 24px rgba(86,181,112,.16); transition: .2s ease; }.auth-submit:hover:not(:disabled) { transform: translateY(-1px); background: #baf0c9; }.auth-submit:disabled { cursor: wait; opacity: .62; }.auth-submit span { font-size: 16px; font-weight: 400; }.auth-offline-link { padding: 0; color: #899cae; font-size: 10px; background: transparent; }.auth-offline-link:hover { color: #b5e8c6; }.auth-error { padding: 9px 11px; color: #f0b5a3; font-size: 10px; border: 1px solid rgba(229,145,111,.28); border-radius: 7px; background: rgba(145,57,44,.16); }.offline-panel { display: grid; grid-template-columns: auto 1fr; gap: 13px; align-items: start; margin-top: 26px; padding: 16px; border: 1px solid rgba(166,229,189,.18); border-radius: 12px; background: rgba(132,211,156,.08); }.offline-icon { display: grid; width: 31px; height: 31px; place-items: center; color: #a6e5bd; border-radius: 9px; background: rgba(166,229,189,.13); }.offline-panel strong { color: #e3f7e8; font-size: 12px; }.offline-panel p { margin-top: 5px; color: #8da396; font-size: 10px; line-height: 1.6; }.offline-panel .auth-submit { grid-column: 1 / -1; margin-top: 5px; }.auth-foot { display: flex; align-items: center; gap: 7px; margin-top: 28px; color: #70849a; font-size: 10px; }.auth-status-dot { width: 6px; height: 6px; border-radius: 50%; background: #83d49d; box-shadow: 0 0 0 3px rgba(131,212,157,.12); }
 @media (max-width: 1250px) { .main-content { padding-inline: 27px; }.metric-grid { gap: 10px; }.metric-card { padding-inline: 14px; }.content-grid { grid-template-columns: minmax(0, 1.6fr) minmax(280px, .85fr); }.order-meta { gap: 7px; } }
+
+/* HomeFlow 多色彩系统：品牌、行动和状态分层，避免全页绿色。 */
+.primary-button, .auth-submit { color: #fff; background: var(--action); box-shadow: 0 10px 24px rgba(240,138,93,.18); }
+.primary-button:hover, .auth-submit:hover:not(:disabled) { background: var(--action-dark); }
+.brand-mark, .mini-avatar, .auth-brand-mark { color: var(--brand); background: var(--brand-soft); }
+.workspace-dot, .auth-status-dot { background: var(--success); }
+.nav-item.active { color: #D5E4E1; background: #214B54; box-shadow: inset 3px 0 var(--action); }
+.metric-card--green { border-color: #D7E9E6; background: linear-gradient(135deg, #F2F8F7, #fff); }
+.metric-trend { color: var(--success); background: var(--success-soft); }
+.state-serving { color: var(--success); background: var(--success-soft); }
+.state-pending_dispatch { color: var(--warning); background: #FFF5E2; }
+.assign-button { color: var(--action-dark); border-color: #F4C4B1; background: #FFF6F1; }
+.bar-track i { background: #B5CCD0; }
+.bar-item:last-child .bar-track i { background: var(--action); }
+.quality-ring { background: conic-gradient(var(--success) 0deg 352deg, #E7EFED 352deg 360deg); }
+.toast { color: var(--success); border-color: #BFE3D4; background: var(--success-soft); }
