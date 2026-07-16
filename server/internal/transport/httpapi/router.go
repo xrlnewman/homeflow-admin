@@ -58,15 +58,24 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	protected.POST("/auth/refresh", s.refresh)
 	protected.POST("/auth/logout", s.logout)
 	protected.GET("/auth/me", s.me)
+	protected.GET("/service-categories", s.categories)
+	protected.GET("/services", s.services)
+	protected.GET("/services/:id", s.service)
+	protected.GET("/availability", s.availability)
+	protected.GET("/addresses", s.addresses)
+	protected.POST("/addresses", s.addAddress)
 	protected.POST("/orders", s.createOrder)
 	protected.GET("/orders/:id", s.getOrder)
 	protected.POST("/orders/:id/cancel", s.cancelOrder)
 	protected.POST("/orders/:id/confirm", s.confirmOrder)
 	admin := protected.Group("/admin")
 	admin.Use(requireRoles("admin", "dispatcher"))
+	admin.GET("/orders", s.adminOrders)
 	admin.POST("/orders/:id/assign", s.assignOrder)
 	admin.GET("/dispatch/recommendations", s.recommendations)
 	admin.GET("/audit-logs", s.auditLogs)
+	protected.GET("/dashboard/summary", s.dashboard)
+	protected.GET("/technicians", s.technicians)
 	workbench := protected.Group("/workbench")
 	workbench.Use(requireRoles("technician", "admin"))
 	workbench.POST("/orders/:id/accept", s.accept)
@@ -222,6 +231,80 @@ func (s *Server) refresh(c *gin.Context) {
 	s.envelope(c, http.StatusOK, "ok", gin.H{"accessToken": token, "tokenType": "Bearer", "expiresIn": 7200})
 }
 func (s *Server) logout(c *gin.Context) { s.envelope(c, http.StatusOK, "ok", gin.H{}) }
+
+func (s *Server) categories(c *gin.Context) {
+	s.envelope(c, http.StatusOK, "ok", []gin.H{{"id": "home-service", "name": "到家服务"}})
+}
+func (s *Server) services(c *gin.Context) {
+	values := s.store.Services()
+	s.envelope(c, http.StatusOK, "ok", gin.H{"list": values, "total": len(values), "page": 1, "pageSize": len(values)})
+}
+func (s *Server) service(c *gin.Context) {
+	value, err := s.store.ServiceByID(c.Param("id"))
+	if err != nil {
+		s.envelope(c, http.StatusNotFound, "服务不存在", nil)
+		return
+	}
+	s.envelope(c, http.StatusOK, "ok", value)
+}
+func (s *Server) availability(c *gin.Context) {
+	values := s.store.Slots(c.Query("serviceId"), c.Query("date"))
+	data := make([]gin.H, 0, len(values))
+	for _, slot := range values {
+		data = append(data, gin.H{"id": slot.ID, "serviceId": slot.ServiceID, "date": slot.Date, "startsAt": slot.StartsAt, "capacity": slot.Capacity, "remaining": slot.Capacity - slot.Used})
+	}
+	s.envelope(c, http.StatusOK, "ok", data)
+}
+func (s *Server) addresses(c *gin.Context) {
+	s.envelope(c, http.StatusOK, "ok", s.store.Addresses(claimsOf(c).UserID))
+}
+func (s *Server) addAddress(c *gin.Context) {
+	var in store.Address
+	if c.ShouldBindJSON(&in) != nil || in.ContactName == "" || in.Phone == "" || in.Detail == "" {
+		s.envelope(c, http.StatusBadRequest, "参数不完整", nil)
+		return
+	}
+	in.ID, in.UserID = uuid.NewString(), claimsOf(c).UserID
+	s.store.AddAddress(in)
+	s.envelope(c, http.StatusCreated, "ok", in)
+}
+func (s *Server) technicians(c *gin.Context) {
+	s.envelope(c, http.StatusOK, "ok", gin.H{"list": s.store.Technicians(), "total": len(s.store.Technicians()), "page": 1, "pageSize": 20})
+}
+func (s *Server) dashboard(c *gin.Context) {
+	orders := s.store.Orders()
+	completed := 0
+	pending := 0
+	for _, value := range orders {
+		if value.State == domain.OrderCompleted {
+			completed++
+		}
+		if value.State != domain.OrderCompleted && value.State != domain.OrderCancelled {
+			pending++
+		}
+	}
+	s.envelope(c, http.StatusOK, "ok", gin.H{"orders": len(orders), "completed": completed, "pending": pending, "completionRate": percentage(completed, len(orders)), "revenue": 0})
+}
+func percentage(part, total int) float64 {
+	if total == 0 {
+		return 0
+	}
+	return float64(part) / float64(total)
+}
+func (s *Server) adminOrders(c *gin.Context) {
+	values := s.store.Orders()
+	status := domain.OrderState(c.Query("status"))
+	if status != "" {
+		filtered := values[:0]
+		for _, value := range values {
+			if value.State == status {
+				filtered = append(filtered, value)
+			}
+		}
+		values = filtered
+	}
+	s.envelope(c, http.StatusOK, "ok", gin.H{"list": values, "total": len(values), "page": 1, "pageSize": len(values)})
+}
 
 func (s *Server) createOrder(c *gin.Context) {
 	var in orderapp.CreateInput

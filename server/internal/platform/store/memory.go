@@ -41,6 +41,14 @@ type Slot struct {
 	Used      int
 }
 
+type Address struct {
+	ID          string `json:"id"`
+	UserID      string `json:"userId"`
+	ContactName string `json:"contactName"`
+	Phone       string `json:"phone"`
+	Detail      string `json:"detail"`
+}
+
 type Technician struct {
 	ID             string
 	Name           string
@@ -62,6 +70,7 @@ type MemoryStore struct {
 	audits        []AuditLog
 	idempotencies map[string]string
 	techs         map[string]Technician
+	addresses     map[string][]Address
 	persistence   Persistence
 }
 
@@ -85,6 +94,7 @@ func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		users: map[string]User{}, usersByPhone: map[string]string{}, services: map[string]Service{},
 		slots: map[string]Slot{}, orders: map[string]domain.Order{}, idempotencies: map[string]string{}, techs: map[string]Technician{},
+		addresses: map[string][]Address{},
 	}
 }
 
@@ -139,7 +149,29 @@ func (s *MemoryStore) ServiceByID(id string) (Service, error) {
 	}
 	return v, nil
 }
+func (s *MemoryStore) Services() []Service {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	values := make([]Service, 0, len(s.services))
+	for _, service := range s.services {
+		values = append(values, service)
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].ID < values[j].ID })
+	return values
+}
 func (s *MemoryStore) SeedSlot(slot Slot) { s.mu.Lock(); defer s.mu.Unlock(); s.slots[slot.ID] = slot }
+func (s *MemoryStore) Slots(serviceID, date string) []Slot {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	values := make([]Slot, 0)
+	for _, slot := range s.slots {
+		if (serviceID == "" || slot.ServiceID == serviceID) && (date == "" || slot.Date == date) {
+			values = append(values, slot)
+		}
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].StartsAt.Before(values[j].StartsAt) })
+	return values
+}
 
 // ReserveSlot atomically increments slot usage and returns false when capacity is exhausted.
 func (s *MemoryStore) ReserveSlot(slotID, serviceID, date string) bool {
@@ -225,6 +257,16 @@ func (s *MemoryStore) UpdateOrder(order domain.Order, event domain.OrderEvent) {
 	}
 }
 func (s *MemoryStore) OrderCount() int { s.mu.RLock(); defer s.mu.RUnlock(); return len(s.orders) }
+func (s *MemoryStore) Orders() []domain.Order {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	values := make([]domain.Order, 0, len(s.orders))
+	for _, order := range s.orders {
+		values = append(values, order)
+	}
+	sort.Slice(values, func(i, j int) bool { return values[i].CreatedAt.After(values[j].CreatedAt) })
+	return values
+}
 func (s *MemoryStore) Events() []domain.OrderEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -261,4 +303,15 @@ func (s *MemoryStore) Audits() []AuditLog {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]AuditLog(nil), s.audits...)
+}
+
+func (s *MemoryStore) AddAddress(address Address) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.addresses[address.UserID] = append(s.addresses[address.UserID], address)
+}
+func (s *MemoryStore) Addresses(userID string) []Address {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return append([]Address(nil), s.addresses[userID]...)
 }
