@@ -144,6 +144,42 @@ func TestCustomerCanCreateDemoOrderWithIdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestCustomerCanListOwnOrders(t *testing.T) {
+	st := store.NewMemoryStore()
+	st.SaveOrder(domain.Order{ID: "customer-order", UserID: "user-demo", State: domain.OrderPendingDispatch}, "")
+	st.SaveOrder(domain.Order{ID: "other-order", UserID: "another-user", State: domain.OrderCompleted}, "")
+	r := httpapi.NewRouter(config.Config{JWTSecret: "test-secret"}, st)
+	body, _ := json.Marshal(map[string]string{"phone": "13800000000", "password": "demo123456"})
+	loginReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
+	loginReq.Header.Set("Content-Type", "application/json")
+	loginRes := httptest.NewRecorder()
+	r.ServeHTTP(loginRes, loginReq)
+	var loginEnvelope struct {
+		Data struct {
+			AccessToken string `json:"accessToken"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(loginRes.Body.Bytes(), &loginEnvelope)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders?page=1&pageSize=20", nil)
+	req.Header.Set("Authorization", "Bearer "+loginEnvelope.Data.AccessToken)
+	res := httptest.NewRecorder()
+	r.ServeHTTP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", res.Code, res.Body.String())
+	}
+	var envelope struct {
+		Data struct {
+			List []domain.Order `json:"list"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(envelope.Data.List) != 1 || envelope.Data.List[0].ID != "customer-order" {
+		t.Fatalf("expected only customer's order, got %+v", envelope.Data.List)
+	}
+}
+
 func TestCustomerConfirmCompletesOwnOrder(t *testing.T) {
 	st := store.NewMemoryStore()
 	st.SaveOrder(domain.Order{ID: "order-awaiting-confirm", UserID: "user-demo", State: domain.OrderPendingCustomerConfirmation}, "")

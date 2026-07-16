@@ -41,10 +41,7 @@ The demo server accepts seeded accounts and returns a bearer token. Production S
 - `POST /admin/orders/:id/assign` `{ "technicianId": "..." }`
 - `GET /admin/dispatch/recommendations?orderId=`
 - `GET /technicians`
-- `POST /technicians`
-- `PATCH /technicians/:id`
-- `GET /technicians/:id/schedule?date=`
-- `GET /services` / `POST /services` / `PATCH /services/:id`
+- `GET /services` / `GET /services/:id`
 - `GET /reviews`
 - `GET /audit-logs`
 
@@ -52,7 +49,6 @@ The demo server accepts seeded accounts and returns a bearer token. Production S
 
 ## Technician workbench
 
-- `GET /workbench/tasks?status=&date=`
 - `POST /workbench/orders/:id/accept`
 - `POST /workbench/orders/:id/arrive`
 - `POST /workbench/orders/:id/start`
@@ -65,4 +61,4 @@ The demo server accepts seeded accounts and returns a bearer token. Production S
 
 Cancellation is allowed from `pending_confirmation`, `pending_dispatch`, and `assigned` with an audit event. Every state-changing request is authenticated, authorized, idempotent where retried, and recorded in `order_events` and `audit_logs`.
 
-预约请求必须带 `Idempotency-Key`。服务端在事务边界内使用唯一业务键保存订单，并以 Redis 8 `SET NX EX` 对时段加短锁；MySQL 8.4 是订单、事件和审计日志的事实来源。开发环境无法连接数据库时 API 仍可使用内存演示模式，生产部署必须配置 `MYSQL_DSN`、`REDIS_ADDR` 和 `JWT_SECRET`。
+预约请求必须带 `Idempotency-Key`。服务端在事务边界内使用唯一业务键保存订单，并以 Redis 8 `SET NX EX` 对时段加短锁。当前演示版以进程内读模型提供接口，并在配置 MySQL 8.4 时把订单、事件、审计、评价和履约凭证写入持久化镜像；启动回载和完整 CRUD 读仓库仍是后续生产化工作。开发环境无法连接数据库时 API 仍可使用内存演示模式，生产部署必须配置 `MYSQL_DSN`、`REDIS_ADDR` 和 `JWT_SECRET`。

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ func NewRouterWithDeps(cfg config.Config, st *store.MemoryStore, deps Dependenci
 	protected.GET("/addresses", s.addresses)
 	protected.POST("/addresses", s.addAddress)
 	protected.POST("/orders", s.createOrder)
+	protected.GET("/orders", s.ordersList)
 	protected.GET("/orders/:id", s.getOrder)
 	protected.POST("/orders/:id/cancel", s.cancelOrder)
 	protected.POST("/orders/:id/confirm", s.confirmOrder)
@@ -326,6 +328,51 @@ func (s *Server) createOrder(c *gin.Context) {
 	s.store.AddAudit(store.AuditLog{ID: uuid.NewString(), ActorID: in.UserID, Action: "create_order", Resource: order.ID, Result: "success", CreatedAt: time.Now().UTC()})
 	s.envelope(c, http.StatusCreated, "ok", order)
 }
+
+func (s *Server) ordersList(c *gin.Context) {
+	claims := claimsOf(c)
+	values := s.store.Orders()
+	if claims.Role == "customer" {
+		owned := values[:0]
+		for _, value := range values {
+			if value.UserID == claims.UserID {
+				owned = append(owned, value)
+			}
+		}
+		values = owned
+	}
+	if status := domain.OrderState(c.Query("status")); status != "" {
+		filtered := values[:0]
+		for _, value := range values {
+			if value.State == status {
+				filtered = append(filtered, value)
+			}
+		}
+		values = filtered
+	}
+	page, pageSize := 1, 20
+	if raw := c.Query("page"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			page = parsed
+		}
+	}
+	if raw := c.Query("pageSize"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 && parsed <= 100 {
+			pageSize = parsed
+		}
+	}
+	total := len(values)
+	start := (page - 1) * pageSize
+	if start > total {
+		start = total
+	}
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	s.envelope(c, http.StatusOK, "ok", gin.H{"list": values[start:end], "total": total, "page": page, "pageSize": pageSize})
+}
+
 func (s *Server) getOrder(c *gin.Context) {
 	order, err := s.store.OrderByID(c.Param("id"))
 	if err != nil {
